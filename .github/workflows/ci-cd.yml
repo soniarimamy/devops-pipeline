@@ -1,7 +1,9 @@
 name: CI/CD Pipeline (Docker → Remote)
+
 on:
   push:
     branches: [main]
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -17,6 +19,8 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
+    # Only run if we have Docker Hub credentials
+    if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
@@ -38,12 +42,16 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-    if: ${{ env.DEPLOY_HOST != '' }}
+    # Only run if we have all required deployment secrets
+    if: |
+      secrets.DEPLOY_HOST &&
+      secrets.DEPLOY_USER &&
+      secrets.DEPLOY_SSH_KEY &&
+      secrets.DOCKERHUB_USERNAME
     steps:
       - uses: actions/checkout@v4
-      - uses: webfactory/ssh-agent@v0.8.1
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.8.1
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Deploy on remote host
@@ -53,14 +61,23 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            export IMAGE_TAG=${{ github.sha }}
-            export DOCKERHUB_USER=${{ secrets.DOCKERHUB_USERNAME }}
-            export DEPLOY_MODE=${{ secrets.DEPLOY_MODE || 'compose' }}
+            export IMAGE_TAG="${{ github.sha }}"
+            export DOCKERHUB_USER="${{ secrets.DOCKERHUB_USERNAME }}"
+            export DEPLOY_MODE="${{ secrets.DEPLOY_MODE || 'compose' }}"
+
+            # Pull the new image
             docker pull docker.io/${DOCKERHUB_USER}/devops-pipeline:${IMAGE_TAG}
+
+            # Deploy based on mode
             if [ "$DEPLOY_MODE" = "swarm" ]; then
+              echo "Deploying with Docker Swarm"
               envsubst < docker-stack.yml > /tmp/docker-stack.yml
               docker stack deploy -c /tmp/docker-stack.yml devops_pipeline
             else
+              echo "Deploying with Docker Compose"
               envsubst < docker-compose.prod.yml > /tmp/docker-compose.yml
               docker-compose -f /tmp/docker-compose.yml up -d
             fi
+
+            # Clean up old images
+            docker image prune -f
