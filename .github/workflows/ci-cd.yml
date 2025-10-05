@@ -38,7 +38,9 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: ${{ secrets.DEPLOY_HOST }}
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    if: ${{ env.DEPLOY_HOST != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: webfactory/ssh-agent@v0.8.1
