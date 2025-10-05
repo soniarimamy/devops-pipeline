@@ -68,7 +68,7 @@ jobs:
           fi
       - name: Setup SSH agent
         if: steps.check-deploy-creds.outputs.deploy_creds_available == 'true'
-        uses: webfactory/ssh-agent@v0.8.1
+        uses: webfactory/ssh-agent@v0.9.1
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Deploy on remote host
