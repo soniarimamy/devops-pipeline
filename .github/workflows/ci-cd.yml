@@ -19,18 +19,28 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
-    # Only run if we have Docker Hub credentials
-    if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check for Docker Hub credentials
+        id: check-docker-creds
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "docker_creds_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "docker_creds_available=false" >> $GITHUB_OUTPUT
+            echo "Warning: Docker Hub credentials not available"
+          fi
       - name: Set up Docker Buildx
+        if: steps.check-docker-creds.outputs.docker_creds_available == 'true'
         uses: docker/setup-buildx-action@v2
       - name: Login to Docker Hub
+        if: steps.check-docker-creds.outputs.docker_creds_available == 'true'
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and push image
+        if: steps.check-docker-creds.outputs.docker_creds_available == 'true'
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -38,23 +48,31 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/devops-pipeline:${{ github.sha }}
             ${{ secrets.DOCKERHUB_USERNAME }}/devops-pipeline:latest
+      - name: Skip build and push
+        if: steps.check-docker-creds.outputs.docker_creds_available == 'false'
+        run: echo "Skipping build and push due to missing Docker Hub credentials"
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    # Only run if we have all required deployment secrets
-    if: |
-      secrets.DEPLOY_HOST &&
-      secrets.DEPLOY_USER &&
-      secrets.DEPLOY_SSH_KEY &&
-      secrets.DOCKERHUB_USERNAME
     steps:
       - uses: actions/checkout@v4
+      - name: Check for deployment credentials
+        id: check-deploy-creds
+        run: |
+          if [ -n "${{ secrets.DEPLOY_HOST }}" ] && [ -n "${{ secrets.DEPLOY_USER }}" ] && [ -n "${{ secrets.DEPLOY_SSH_KEY }}" ] && [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+            echo "deploy_creds_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_creds_available=false" >> $GITHUB_OUTPUT
+            echo "Warning: Deployment credentials not available"
+          fi
       - name: Setup SSH agent
+        if: steps.check-deploy-creds.outputs.deploy_creds_available == 'true'
         uses: webfactory/ssh-agent@v0.8.1
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Deploy on remote host
+        if: steps.check-deploy-creds.outputs.deploy_creds_available == 'true'
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -81,3 +99,6 @@ jobs:
 
             # Clean up old images
             docker image prune -f
+      - name: Skip deployment
+        if: steps.check-deploy-creds.outputs.deploy_creds_available == 'false'
+        run: echo "Skipping deployment due to missing credentials"
