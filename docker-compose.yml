@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  devops-pipeline:
+    image: devops-pipeline:local
+    build:
+      context: .
+    ports:
+      - "3000:3000"
+    environment:
+      - APP_VERSION=dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

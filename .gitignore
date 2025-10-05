@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+.env.dev
+.env.prod
+.env.local
+dist/
+node_modules/

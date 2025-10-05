@@ -1,0 +1,64 @@
+name: CI/CD Pipeline (Docker → Remote)
+on:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/devops-pipeline:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/devops-pipeline:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: ${{ secrets.DEPLOY_HOST != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: webfactory/ssh-agent@v0.8.1
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Deploy on remote host
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export IMAGE_TAG=${{ github.sha }}
+            export DOCKERHUB_USER=${{ secrets.DOCKERHUB_USERNAME }}
+            export DEPLOY_MODE=${{ secrets.DEPLOY_MODE || 'compose' }}
+            docker pull docker.io/${DOCKERHUB_USER}/devops-pipeline:${IMAGE_TAG}
+            if [ "$DEPLOY_MODE" = "swarm" ]; then
+              envsubst < docker-stack.yml > /tmp/docker-stack.yml
+              docker stack deploy -c /tmp/docker-stack.yml devops_pipeline
+            else
+              envsubst < docker-compose.prod.yml > /tmp/docker-compose.yml
+              docker-compose -f /tmp/docker-compose.yml up -d
+            fi
