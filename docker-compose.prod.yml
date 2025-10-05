@@ -1,11 +1,13 @@
 version: "3.8"
 services:
   devops-pipeline:
-    image: docker.io/<YOUR_USER>/devops-pipeline:${IMAGE_TAG}
+    # image: docker.io/<YOUR_USER>/devops-pipeline:${IMAGE_TAG}
+    image: docker.io/rochel05/devops-pipeline:latest
     ports:
       - "3000:3000"
     environment:
-      - APP_VERSION=${IMAGE_TAG}
+      # - APP_VERSION=${IMAGE_TAG}
+      - APP_VERSION=dev
     deploy:
       restart_policy:
         condition: on-failure
